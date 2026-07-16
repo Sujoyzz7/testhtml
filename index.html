@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Futuristic Cat's Cradle</title>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+  
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #05050a;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    #canvas-container {
+      position: relative;
+      box-shadow: 0 0 30px rgba(0, 242, 254, 0.2);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    /* Hidden video element used by MediaPipe */
+    #webcam {
+      display: none;
+    }
+
+    /* UI overlay styling */
+    #overlay-ui {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      color: #00f2fe;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      font-size: 14px;
+      pointer-events: none;
+      text-shadow: 0 0 8px rgba(0, 242, 254, 0.6);
+      z-index: 10;
+    }
+
+    .status-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      background-color: #ff007f;
+      border-radius: 50%;
+      margin-right: 8px;
+      box-shadow: 0 0 8px #ff007f;
+    }
+
+    .status-active {
+      background-color: #00f2fe;
+      box-shadow: 0 0 8px #00f2fe;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="overlay-ui">
+    <div id="status"><span class="status-dot" id="dot"></span>Connecting Camera...</div>
+  </div>
+  
+  <div id="canvas-container"></div>
+  
+  <video id="webcam" playsinline></video>
+
+  <script>
+    let videoElement;
+    let handsDetector;
+    let cameraTracker;
+    let trackedHandsResults = null;
+
+    // Fingertip landmark indices in MediaPipe Hands
+    // 4: Thumb, 8: Index, 12: Middle, 16: Ring, 20: Pinky
+    const fingertipIndices = [4, 8, 12, 16, 20];
+
+    function setup() {
+      // Create canvas and mount it to container
+      const canvas = createCanvas(800, 600);
+      canvas.parent('canvas-container');
+      
+      videoElement = document.getElementById('webcam');
+
+      // Initialize MediaPipe Hands
+      handsDetector = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+      });
+
+      handsDetector.setOptions({
+        maxNumHands: 2,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.6,
+        minTrackingConfidence: 0.6
+      });
+
+      handsDetector.onResults(onHandResults);
+
+      // Initialize Camera
+      cameraTracker = new Camera(videoElement, {
+        onFrame: async () => {
+          await handsDetector.send({ image: videoElement });
+        },
+        width: 800,
+        height: 600
+      });
+      
+      cameraTracker.start()
+        .then(() => {
+          document.getElementById('status').innerHTML = '<span class="status-dot status-active"></span>SYSTEMS OPERATIONAL - BRING BOTH HANDS IN VIEW';
+        })
+        .catch(err => {
+          document.getElementById('status').innerHTML = '<span class="status-dot"></span>CAMERA ACCESS DENIED';
+          console.error(err);
+        });
+    }
+
+    // MediaPipe callback when hands are tracked
+    function onHandResults(results) {
+      trackedHandsResults = results;
+    }
+
+    function draw() {
+      // Clear with dark, semi-transparent background to create trail effect
+      background(10, 10, 20, 150);
+
+      // Translate and scale to mirror the entire canvas
+      push();
+      translate(width, 0);
+      scale(-1, 1);
+
+      // Draw the webcam feed in background (mirrored) with 30% opacity for a futuristic backdrop
+      tint(255, 70);
+      image(videoElement, 0, 0, width, height);
+      noTint();
+
+      if (trackedHandsResults && trackedHandsResults.multiHandLandmarks) {
+        let leftHand = null;
+        let rightHand = null;
+
+        // Process up to two detected hands
+        for (let i = 0; i < trackedHandsResults.multiHandLandmarks.length; i++) {
+          const landmarks = trackedHandsResults.multiHandLandmarks[i];
+          const handedness = trackedHandsResults.multiHandedness[i].label; // "Left" or "Right"
+
+          // Note: Because the canvas is mirrored, we adjust our logic or map hands accurately
+          if (handedness === 'Left') {
+            leftHand = landmarks;
+          } else {
+            rightHand = landmarks;
+          }
+
+          // Draw neon joints on every tracked hand
+          drawHandJoints(landmarks);
+        }
+
+        // If both hands are active, weave the "Cat's Cradle"
+        if (leftHand && rightHand) {
+          drawCatsCradle(leftHand, rightHand);
+        }
+      }
+
+      pop(); // End mirror transform
+    }
+
+    // Draw glowing neon joints
+    function drawHandJoints(landmarks) {
+      push();
+      for (let i = 0; i < landmarks.length; i++) {
+        let x = landmarks[i].x * width;
+        let y = landmarks[i].y * height;
+
+        // Apply native Canvas glow
+        drawingContext.shadowBlur = 12;
+        drawingContext.shadowColor = '#ff007f';
+
+        // Cyan accent for tips, Magenta for body joints
+        if (fingertipIndices.includes(i)) {
+          fill(0, 242, 254);
+          drawingContext.shadowColor = '#00f2fe';
+          ellipse(x, y, 10, 10);
+        } else {
+          fill(255, 0, 127);
+          ellipse(x, y, 6, 6);
+        }
+      }
+      pop();
+    }
+
+    // Draw interactive dynamic strings between the hands
+    function drawCatsCradle(handA, handB) {
+      // Let's create an intricate cradle geometry
+      // Connect matching fingers: Thumb to Thumb, Index to Index...
+      for (let i = 0; i < fingertipIndices.length; i++) {
+        let indexA = fingertipIndices[i];
+        
+        // Dynamic weave: connects indexA to matching index and opposite index on the other hand
+        let indexB = fingertipIndices[i]; 
+        let indexBCross = fingertipIndices[(i + 2) % fingertipIndices.length]; // Beautiful cross pattern
+
+        drawElasticString(handA[indexA], handB[indexB]);
+        drawElasticString(handA[indexA], handB[indexBCross]);
+      }
+    }
+
+    // Draws a single glowing elastic string between two points
+    function drawElasticString(ptA, ptB) {
+      let x1 = ptA.x * width;
+      let y1 = ptA.y * height;
+      let x2 = ptB.x * width;
+      let y2 = ptB.y * height;
+
+      // Calculate distance between fingers to determine tension
+      let d = dist(x1, y1, x2, y2);
+      
+      // Map tension: further apart = thinner, redder/yellow; closer = thicker, cyan/blue
+      let tension = constrain(map(d, 100, 600, 0, 1), 0, 1);
+
+      // Color interpolation (Cyan -> Magenta -> Yellow based on distance/tension)
+      let colStart = color(0, 242, 254); // Cyan
+      let colMid = color(255, 0, 127);   // Magenta
+      let colEnd = color(255, 211, 0);   // Yellow
+      
+      let stringColor;
+      if (tension < 0.5) {
+        stringColor = lerpColor(colStart, colMid, tension * 2);
+      } else {
+        stringColor = lerpColor(colMid, colEnd, (tension - 0.5) * 2);
+      }
+
+      // Elastic thickness: thinner under high tension (stretched out)
+      let thickness = map(tension, 0, 1, 4, 1);
+
+      push();
+      // Apply shadow glow matching the dynamic string color
+      drawingContext.shadowBlur = 15;
+      drawingContext.shadowColor = stringColor.toString();
+      
+      stroke(stringColor);
+      strokeWeight(thickness);
+      line(x1, y1, x2, y2);
+      pop();
+    }
+
+    // Dynamic window resizing
+    function windowResized() {
+      resizeCanvas(800, 600);
+    }
+  </script>
+</body>
+</html>
